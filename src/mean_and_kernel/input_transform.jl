@@ -1,7 +1,3 @@
-import Base: map, eachindex
-import Distances: pairwise
-export transform, pick_dims, periodic, scale, Indexer
-
 """
     ITMean{Tμ<:MeanFunction, Tf} <: MeanFunction
 
@@ -12,28 +8,27 @@ struct ITMean{Tμ<:MeanFunction, Tf} <: MeanFunction
     μ::Tμ
     f::Tf
 end
-(μ::ITMean)(x) = μ.μ(μ.f(x))
-ITMean(μ::MeanFunction, ::typeof(identity)) = μ
-length(μ::ITMean) = length(μ.μ)
-eachindex(μ::ITMean) = eachindex(μ.μ)
-_map(μ::ITMean, X::AV) = map(μ.μ, map(μ.f, X))
+ew(μ::ITMean, X::AV) = ew(μ.μ, μ.f.(X))
+
 
 """
     ITKernel{Tk<:Kernel, Tf} <: Kernel
 
 "InputTransformationKernel": An `ITKernel` `kit` is the kernel defined by applying a
-transform `f` to the argument to a kernel `k`. Concretely: `k(x, x′) = k(f(x), f(x′))`.
+transform `f` to the argument to a kernel `k`. Concretely: `kit(x, x′) = k(f(x), f(x′))`.
 """
 struct ITKernel{Tk<:Kernel, Tf} <: Kernel
     k::Tk
     f::Tf
 end
-(k::ITKernel)(x) = k.k(k.f(x))
-(k::ITKernel)(x, x′) = k.k(k.f(x), k.f(x′))
-ITKernel(k::Kernel, ::typeof(identity)) = k
-length(k::ITKernel) = length(k.k)
-isstationary(k::ITKernel) = isstationary(k.k)
-eachindex(k::ITKernel) = eachindex(k.k)
+
+# Binary methods.
+ew(k::ITKernel, x::AV, x′::AV) = ew(k.k, k.f.(x), k.f.(x′))
+pw(k::ITKernel, x::AV, x′::AV) = pw(k.k, k.f.(x), k.f.(x′))
+
+# Unary methods.
+ew(k::ITKernel, x::AV) = ew(k.k, k.f.(x))
+pw(k::ITKernel, x::AV) = pw(k.k, k.f.(x))
 
 """
     LhsITCross{Tk<:CrossKernel, Tf} <: CrossKernel
@@ -44,8 +39,9 @@ struct LhsITCross{Tk<:CrossKernel, Tf} <: CrossKernel
     k::Tk
     f::Tf
 end
-(k::LhsITCross)(x, x′) = k.k(k.f(x), x′)
-size(k::LhsITCross, n::Int) = size(k.k, n)
+ew(k::LhsITCross, x::AV, x′::AV) = ew(k.k, k.f.(x), x′)
+pw(k::LhsITCross, x::AV, x′::AV) = pw(k.k, k.f.(x), x′)
+
 
 """
     RhsITCross{Tk<:CrossKernel, Tf} <: CrossKernel
@@ -56,8 +52,9 @@ struct RhsITCross{Tk<:CrossKernel, Tf} <: CrossKernel
     k::Tk
     f::Tf
 end
-(k::RhsITCross)(x, x′) = k.k(x, k.f(x′))
-size(k::RhsITCross, n::Int) = size(k.k, n)
+ew(k::RhsITCross, x::AV, x′::AV) = ew(k.k, x, k.f.(x′))
+pw(k::RhsITCross, x::AV, x′::AV) = pw(k.k, x, k.f.(x′))
+
 
 """
     ITCross{Tk<:Kernel, Tf, Tf′} <: CrossKernel
@@ -69,13 +66,9 @@ struct ITCross{Tk<:Kernel, Tf, Tf′} <: CrossKernel
     f::Tf
     f′::Tf′
 end
-(k::ITCross)(x, x′) = k.k(k.f(x), k.f′(x′))
-size(k::ITCross, n::Int) = size(k.k, n)
+ew(k::ITCross, x::AV, x′::AV) = ew(k.k, k.f.(x), k.f′.(x′))
+pw(k::ITCross, x::AV, x′::AV) = pw(k.k, k.f.(x), k.f′.(x′))
 
-_map(k::ITKernel, X::AV) = map(k.k, map(k.f, X))
-_map(k::ITKernel, X::AV, X′::AV) = map(k.k, map(k.f, X), map(k.f, X′))
-_pairwise(k::ITKernel, X::AV) = pairwise(k.k, map(k.f, X))
-_pairwise(k::ITKernel, X::AV, X′::AV) = pairwise(k.k, map(k.f, X), map(k.f, X′))
 
 """
     transform(f::Union{MeanFunction, Kernel}, ϕ)
@@ -103,55 +96,88 @@ transform(k::CrossKernel, ϕ, ϕ′) = ITCross(k, ϕ, ϕ′)
 
 
 """
-    scale(f::Union{MeanFunction, Kernel}, l::Real)
+    Stretch{T<:Real}
 
-Multiply each element of the input by `l`.
+Stretch all elements of the inputs by `l`.
 """
-scale(f::Union{MeanFunction, Kernel}, l::Real) = transform(f, Scale(l))
-
-struct Scale{T<:Real}
+struct Stretch{T<:Real}
     l::T
 end
-(s::Scale)(x) = s.l * x
-map(s::Scale, x::AVM) = s.l .* x
+(s::Stretch)(x) = s.l * x
+broadcasted(s::Stretch, x::StepRangeLen) = s.l .* x
+broadcasted(s::Stretch, x::ColsAreObs) = ColsAreObs(s.l .* x.X)
+
+stretch(f::Union{MeanFunction, Kernel, CrossKernel}, l::Real) = transform(f, Stretch(l))
+
 
 """
-    pick_dims(x::Union{MeanFunction, Kernel}, I)
+    LinearTransform{T<:AbstractMatrix}
 
-Returns either an `ITMean` or `ITKernel` which uses the columns of the input matrix `X`
-specified by `I`.
+A linear transformation of the inputs.
 """
-pick_dims(μ::MeanFunction, I) = ITMean(μ, X::AV->X[I])
-pick_dims(k::Kernel, I) = ITKernel(k, X::AV->X[I])
+struct LinearTransform{T<:AbstractMatrix}
+    A::T
+end
+(l::LinearTransform)(x::AbstractVector) = l.A * x
+broadcasted(l::LinearTransform, x::ColsAreObs) = ColsAreObs(l.A * x.X)
+
+function stretch(f::Union{MeanFunction, Kernel, CrossKernel}, A::AbstractMatrix)
+    return transform(f, LinearTransform(A))
+end
+function stretch(f::Union{MeanFunction, Kernel, CrossKernel}, A::AbstractVector)
+    return stretch(f, Diagonal(A))
+end
+
 
 """
-    periodic(k::Union{MeanFunction, Kernel}, θ::Real)
+    Select{Tidx}
 
-Make `k` periodic with period `f`.
+Use inside an input transformation meanfunction / crosskernel to improve peformance.
 """
-periodic(μ::MeanFunction, f::Real) = ITMean(μ, Periodic(f))
-periodic(k::Kernel, f::Real) = ITKernel(k, Periodic(f))
-periodic(k::EQ, p::Real) = PerEQ(p)
-periodic(f::Union{MeanFunction, Kernel}) = periodic(f, 1.0)
+struct Select{Tidx}
+    idx::Tidx
+end
+(f::Select)(x) = x[f.idx]
+broadcasted(f::Select, x::ColsAreObs) = ColsAreObs(x.X[f.idx, :])
+broadcasted(f::Select{<:Integer}, x::ColsAreObs) = x.X[f.idx, :]
 
+function broadcasted(f::Select, x::AbstractVector{<:CartesianIndex})
+    out = Matrix{Int}(undef, length(f.idx), length(x))
+    for i in f.idx, n in eachindex(x)
+        out[i, n] = x[n][i]
+    end
+    return ColsAreObs(out)
+end
+@adjoint function broadcasted(f::Select, x::AV{<:CartesianIndex})
+    return broadcasted(f, x), Δ->(nothing, nothing)
+end
+function broadcasted(f::Select{<:Integer}, x::AV{<:CartesianIndex})
+    out = Matrix{Int}(undef, length(x))
+    for n in eachindex(x)
+        out[n] = x[n][f.idx]
+    end
+    return out
+end
+
+select(f::Union{MeanFunction, Kernel, CrossKernel}, idx) = transform(f, Select(idx))
+
+
+"""
+    Periodic{Tf<:Real}
+
+Make a kernel or mean function periodic by projecting into two dimensions.
+"""
 struct Periodic{Tf<:Real}
     f::Tf
 end
 (p::Periodic)(t::Real) = [cos((2π * p.f) * t), sin((2π * p.f) * t)]
-function map(p::Periodic, t::AV)
-    return ColsAreObs(vcat(
-        map(x->cos((2π * p.f) * x), t)',
-        map(x->sin((2π * p.f) * x), t)',
-    ))
+function broadcasted(p::Periodic, x::AbstractVector{<:Real})
+    return ColsAreObs(vcat(cos.((2π * p.f) .* x)', sin.((2π * p.f) .* x)'))
 end
 
 """
-    Indexer
+    periodic(g::Union{MeanFunction, Kernel, CrossKernel}, f::Real)
 
-Pulls out the `n`th index of whatever object is passed.
+Make `g` periodic with frequency `f`.
 """
-struct Indexer
-    n::Int
-end
-(indexer::Indexer)(x) = x[indexer.n]
-map(indexer::Indexer, x::ColsAreObs) = view(x.X, indexer.n, :)
+periodic(g::Union{MeanFunction, Kernel, CrossKernel}, f::Real) = transform(g, Periodic(f))
