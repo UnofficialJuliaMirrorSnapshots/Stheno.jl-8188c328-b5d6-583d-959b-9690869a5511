@@ -6,6 +6,7 @@ Stheno is designed to make doing non-standard things with Gaussian processes str
 
 [We also have a Python version of the package](https://github.com/wesselb/stheno)
 
+Please open issues liberally -- if there's anything that's unclear or doesn't work, we would very much like to know about it.
 
 ## A Couple of Examples
 
@@ -54,6 +55,8 @@ ms3 = marginals(f₃′(Xp));
 μf₂′, σf₂′ = mean.(ms2), std.(ms2);
 μf₃′, σf₃′ = mean.(ms3), std.(ms3);
 ```
+![](https://github.com/willtebbutt/stheno_models/blob/master/exact/process_decomposition.png)
+
 [Model Zoo Link](https://github.com/willtebbutt/stheno_models/blob/master/exact/process_decomposition.jl)
 
 In the above figure, we have visualised the posterior distribution of all of the processes. Bold lines are posterior means, and shaded areas are three posterior standard deviations from these means. Thin lines are samples from the posterior processes.
@@ -105,6 +108,8 @@ ms3 = marginals(y₂′(Xp));
 μy₁′, σy₁′ = mean.(ms2), std.(ms2);
 μy₂′, σy₂′ = mean.(ms3), std.(ms3);
 ```
+![](https://github.com/willtebbutt/stheno_models/blob/master/exact/simple_sensor_fusion.png)
+
 [Model Zoo Link](https://github.com/willtebbutt/stheno_models/blob/master/exact/simple_sensor_fusion.jl)
 
 As before, we visualise the posterior distribution through its marginal statistics and joint samples. Note that the posterior samples over the unobserved process are (unsurprisingly) smooth, whereas the posterior samples over the noisy processes still look uncorrelated and noise-like.
@@ -125,7 +130,7 @@ This is not to say that there would be no value in the creation of a separate pa
 
 ## GPs + Deep Learning
 
-The plan is again not to support the combination of GPs and Deep Learning explicitly, but rather to ensure that Stheno and [Flux.jl](https://github.com/FluxML/Flux.jl) play nicely with one another. Once the AD-related issues below have been resolved, example usage will be provided.
+The plan is again not to support the combination of GPs and Deep Learning explicitly, but rather to ensure that Stheno and [Flux.jl](https://github.com/FluxML/Flux.jl) play nicely with one another. Both packages now work with [Zygote.jl](https://github.com/FluxML/Zygote.jl), so you can use that to sort out gradient information.
 
 ## Things that are definitely up for grabs
 Obviously, improvements to code documentation are always welcome, and if you want to write some more unit / integration tests, please feel free. In terms of larger items that require some attention, here are some thoughts:
