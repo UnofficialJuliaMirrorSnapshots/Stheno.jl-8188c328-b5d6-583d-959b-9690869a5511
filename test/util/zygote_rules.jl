@@ -1,4 +1,4 @@
-using FDM, Zygote, Distances, Random, LinearAlgebra, ToeplitzMatrices, StatsFuns
+using FiniteDifferences, Zygote, Distances, Random, LinearAlgebra, ToeplitzMatrices, StatsFuns
 using Base.Broadcast: broadcast_shape
 
 @testset "zygote_rules" begin
@@ -51,6 +51,21 @@ using Base.Broadcast: broadcast_shape
             rtol=1e-6,
             atol=1e-6,
         )
+    end
+    @testset "colwise(::Euclidean, X, Y; dims=2)" begin
+        rng, D, P = MersenneTwister(123456), 2, 3
+        X, Y, D̄ = randn(rng, D, P), randn(rng, D, P), randn(rng, P)
+        adjoint_test((X, Y)->colwise(Euclidean(), X, Y), D̄, X, Y)
+    end
+    @testset "pairwise(::Euclidean, X, Y; dims=2)" begin
+        rng, D, P, Q = MersenneTwister(123456), 2, 3, 5
+        X, Y, D̄ = randn(rng, D, P), randn(rng, D, Q), randn(rng, P, Q)
+        adjoint_test((X, Y)->pairwise(Euclidean(), X, Y), D̄, X, Y)
+    end
+    @testset "pairwise(::Euclidean, X; dims=2)" begin
+        rng, D, P = MersenneTwister(123456), 2, 3
+        X, D̄ = randn(rng, D, P), randn(rng, P, P)
+        adjoint_test(X->pairwise(Euclidean(), X), D̄, X)
     end
     @testset "Diagonal" begin
         rng, N = MersenneTwister(123456), 11
@@ -107,7 +122,7 @@ using Base.Broadcast: broadcast_shape
     function test_log1pexp(T, rng, tol, xs)
         for x in xs
             adjoint_test(log1pexp, randn(rng, T), x;
-                fdm=FDM.Central(5, 1; eps=eps(T), adapt=2),
+                fdm=FiniteDifferences.Central(5, 1; eps=eps(T), adapt=2),
                 rtol=tol,
                 atol=tol,
             )
