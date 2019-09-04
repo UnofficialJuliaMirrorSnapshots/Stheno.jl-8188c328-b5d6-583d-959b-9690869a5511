@@ -6,7 +6,8 @@ makedocs(
     sitename = "Stheno.jl",
     pages = [
         "Home" => "index.md",
-        "BlockArrays extensions" => "block_arrays_ext.md",
-        "Interfaces" => "mean_and_kernel_interfaces.md",
+        "Internals" => "internals.md",
     ],
 )
+
+deploydocs(repo="github.com/willtebbutt/Stheno.jl.git")
