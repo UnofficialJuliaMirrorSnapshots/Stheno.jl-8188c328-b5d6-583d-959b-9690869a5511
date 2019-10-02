@@ -1,4 +1,4 @@
-import Base: *, zero
+import Base: +, *, zero
 import Distances: pairwise, colwise
 using Distances: sqeuclidean, SqEuclidean, Euclidean
 using Base.Broadcast: broadcast_shape
@@ -279,9 +279,31 @@ pw(k::Noise{T}, x::AV) where {T} = diagm(0=>ones(T, length(x)))
 
 
 """
+    Sum{Tkl<:Kernel, Tkr<:Kernel} <: Kernel
+
+Represents the sum of two kernels `kl` and `kr` s.t. `k(x, x′) = kl(x, x′) + kr(x, x′)`.
+"""
+struct Sum{Tkl<:Kernel, Tkr<:Kernel} <: Kernel
+    kl::Tkl
+    kr::Tkr
+end
+
++(kl::Kernel, kr::Kernel) = Sum(kl, kr)
+
+# Binary methods
+ew(k::Sum, x::AV, x′::AV) = ew(k.kl, x, x′) + ew(k.kr, x, x′)
+pw(k::Sum, x::AV, x′::AV) = pw(k.kl, x, x′) + pw(k.kr, x, x′)
+
+# Unary methods
+ew(k::Sum, x::AV) = ew(k.kl, x) + ew(k.kr, x)
+pw(k::Sum, x::AV) = pw(k.kl, x) + pw(k.kr, x)
+
+
+
+"""
     Product{Tkl<:Kernel, Tkr<:Kernel} <: Kernel
 
-Represents the product of two kernels `kl` and `kr` st. `k(x, x′) = kl(x, x′) kr(x, x′)`.
+Represents the product of two kernels `kl` and `kr` s.t. `k(x, x′) = kl(x, x′) kr(x, x′)`.
 """
 struct Product{Tkl<:Kernel, Tkr<:Kernel} <: Kernel
     kl::Tkl
@@ -299,6 +321,30 @@ ew(k::Product, x::AV) = ew(k.kl, x) .* ew(k.kr, x)
 pw(k::Product, x::AV) = pw(k.kl, x) .* pw(k.kr, x)
 
 
+
+"""
+    Scaled{Tσ²<:Real, Tk<:Kernel} <: Kernel
+
+Scale the variance of `Kernel` `k` by `σ²` s.t. `(σ² * k)(x, x′) = σ² * k(x, x′)`.
+"""
+struct Scaled{Tσ²<:Real, Tk<:Kernel} <: Kernel
+    σ²::Tσ²
+    k::Tk
+end
+
+*(σ²::Real, k::Kernel) = Scaled(σ², k)
+*(k::Kernel, σ²) = σ² * k
+
+# Binary methods.
+ew(k::Scaled, x::AV, x′::AV) = k.σ² .* ew(k.k, x, x′)
+pw(k::Scaled, x::AV, x′::AV) = k.σ² .* pw(k.k, x, x′)
+
+# Unary methods.
+ew(k::Scaled, x::AV) = k.σ² .* ew(k.k, x)
+pw(k::Scaled, x::AV) = k.σ² .* pw(k.k, x)
+
+
+
 """
     Stretched{Tk<:Kernel} <: Kernel
 
@@ -311,7 +357,6 @@ end
 
 stretch(k::Kernel, a::Union{Real, AV{<:Real}, AM{<:Real}}) = Stretched(a, k)
 
-
 # Binary methods (scalar `a`, scalar-valued input)
 ew(k::Stretched{<:Real}, x::AV{<:Real}, x′::AV{<:Real}) = ew(k.k, k.a .* x, k.a .* x′)
 pw(k::Stretched{<:Real}, x::AV{<:Real}, x′::AV{<:Real}) = pw(k.k, k.a .* x, k.a .* x′)
@@ -319,7 +364,6 @@ pw(k::Stretched{<:Real}, x::AV{<:Real}, x′::AV{<:Real}) = pw(k.k, k.a .* x, k.
 # Unary methods (scalar)
 ew(k::Stretched{<:Real}, x::AV{<:Real}) = ew(k.k, k.a .* x)
 pw(k::Stretched{<:Real}, x::AV{<:Real}) = pw(k.k, k.a .* x)
-
 
 # Binary methods (scalar and vector `a`, vector-valued input)
 function ew(k::Stretched{<:Union{Real, AV{<:Real}}}, x::ColsAreObs, x′::ColsAreObs)
@@ -332,7 +376,6 @@ end
 # Unary methods (scalar and vector `a`, vector-valued input)
 ew(k::Stretched{<:Union{Real, AV{<:Real}}}, x::ColsAreObs) = ew(k.k, ColsAreObs(k.a .* x.X))
 pw(k::Stretched{<:Union{Real, AV{<:Real}}}, x::ColsAreObs) = pw(k.k, ColsAreObs(k.a .* x.X))
-
 
 # Binary methods (matrix `a`, vector-valued input)
 function ew(k::Stretched{<:AM{<:Real}}, x::ColsAreObs, x′::ColsAreObs)
@@ -348,7 +391,7 @@ pw(k::Stretched{<:AM{<:Real}}, x::ColsAreObs) = pw(k.k, ColsAreObs(k.a * x.X))
 
 # Create convenience versions of each of the kernels that accept a length scale.
 for (k, K) in (
-    (:eq, :EQ), (:exp, :Exp), (:matern12, :Matern12), (:matern32, :Matern32),
+    (:eq, :EQ), (:exponential, :Exp), (:matern12, :Matern12), (:matern32, :Matern32),
     (:matern52, :Matern52), (:linear, :Linear),
 )
     @eval $k() = $K()
