@@ -2,11 +2,12 @@ using Documenter, Stheno
 
 makedocs(
 	modules = [Stheno],
-    format = :html,
+    format = Documenter.HTML(),
     sitename = "Stheno.jl",
     pages = [
         "Home" => "index.md",
         "Internals" => "internals.md",
+        "Input Types" => "input_types.md",
     ],
 )
 
